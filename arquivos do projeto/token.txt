@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.17; // Usando a versão mais recente do Solidity
+
+// ERC Token Standard #20 Interface
+interface ERC20Interface {
+    function totalSupply() external view returns (uint);
+    function balanceOf(address tokenOwner) external view returns (uint balance);
+    function allowance(address tokenOwner, address spender) external view returns (uint remaining);
+    function transfer(address to, uint tokens) external returns (bool success);
+    function approve(address spender, uint tokens) external returns (bool success);
+    function transferFrom(address from, address to, uint tokens) external returns (bool success);
+
+    event Transfer(address indexed from, address indexed to, uint tokens);
+    event Approval(address indexed tokenOwner, address indexed spender, uint tokens);
+}
+
+// Contract function to receive approval and execute function in one call
+interface ApproveAndCallFallBack {
+    function receiveApproval(address from, uint256 tokens, address token, bytes calldata data) external;
+}
+
+// Actual token contract
+contract DIOToken is ERC20Interface {
+    string public symbol;
+    string public name;
+    uint8 public decimals;
+    uint public totalSupplyAmount;
+
+    mapping(address => uint) private balances;
+    mapping(address => mapping(address => uint)) private allowed;
+
+    address public owner;
+    bool public paused = false;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Somente o proprietário pode executar esta ação");
+        _;
+    }
+
+    modifier whenNotPaused() {
+        require(!paused, "O contrato está pausado");
+        _;
+    }
+
+    bool private locked;
+
+    modifier noReentrancy() {
+        require(!locked, "Não pode reentrar");
+        locked = true;
+        _;
+        locked = false;
+    }
+
+    constructor() {
+        symbol = "DIO";
+        name = "DIO Coin";
+        decimals = 2;
+        totalSupplyAmount = 100000 * 10 ** uint(decimals);
+        balances[msg.sender] = totalSupplyAmount;
+        owner = msg.sender; 
+        emit Transfer(address(0), msg.sender, totalSupplyAmount);
+    }
+
+    function totalSupply() public view override returns (uint) {
+        return totalSupplyAmount;
+    }
+
+    function balanceOf(address tokenOwner) public view override returns (uint balance) {
+        return balances[tokenOwner];
+    }
+
+    function transfer(address to, uint tokens) public override whenNotPaused noReentrancy returns (bool success) {
+        require(to != address(0), "Endereço inválido");
+        require(balances[msg.sender] >= tokens, "Saldo insuficiente");
+
+        balances[msg.sender] -= tokens;
+        balances[to] += tokens;
+        emit Transfer(msg.sender, to, tokens);
+        return true;
+    }
+
+    function approve(address spender, uint tokens) public override returns (bool success) {
+        require(spender != address(0), "Endereço do aprovador inválido"); // Verificação do spender
+        allowed[msg.sender][spender] = tokens;
+        emit Approval(msg.sender, spender, tokens);
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint tokens) public override whenNotPaused noReentrancy returns (bool success) {
+        require(from != address(0), "Endereço inválido");
+        require(to != address(0), "Endereço inválido");
+        require(tokens <= allowed[from][msg.sender], "Limite excedido");
+        require(balances[from] >= tokens, "Saldo insuficiente");
+
+        // comandos para transferência
+        balances[from] -= tokens;
+        allowed[from][msg.sender] -= tokens;
+        balances[to] += tokens;
+
+        emit Transfer(from, to, tokens);
+        return true;
+    }
+
+    function allowance(address tokenOwner, address spender) public view override returns (uint remaining) {
+        return allowed[tokenOwner][spender];
+    }
+
+    function approveAndCall(address spender, uint tokens, bytes calldata data) public returns (bool success) {
+        require(spender != address(0), "Endereço do aprovador inválido"); // Verificação do spender
+        allowed[msg.sender][spender] = tokens;
+        emit Approval(msg.sender, spender, tokens);
+        ApproveAndCallFallBack(spender).receiveApproval(msg.sender, tokens, address(this), data);
+        return true;
+    }
+
+    // Modificadores para pausar o contrato
+    function pause() external onlyOwner {
+        paused = true;
+    }
+
+    function unpause() external onlyOwner {
+        paused = false;
+    }
+
+    // Função recebendo ETH, revertendo com mensagem
+    receive() external payable {
+        revert("Este contrato não aceita ETH"); // Mantido, caso você não deseje receber ETH
+    }
+}
+
+// **Sugestões de Segurança Adicionais:**
+// 1. Considere realizar auditorias regulares por empresas de terceiros respeitáveis.
+// 2. Implementar mecanismos avançados de controle de acesso, como carteiras multiassinado.
+// 3. Utilize soluções de armazenamento seguro e descentralizado para dados sensíveis, se necessário.
+// 4. Tenha cuidado ao interagir com este contrato ou qualquer outro contrato inteligente na blockchain.
+// Sempre inspecione transações com cuidado antes de enviar fundos para garantir que sejam legítimas.
+// **Tenha em mente que implantar esse código é por sua própria conta e risco; consulte várias fontes de informações para orientações.**
+
